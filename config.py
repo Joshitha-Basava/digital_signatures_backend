@@ -1,4 +1,5 @@
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, storage
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -20,16 +21,16 @@ def initialize_firebase():
     try:
         FIREBASE_CREDENTIALS = os.getenv("FIREBASE_CREDENTIALS")
         if not FIREBASE_CREDENTIALS:
-            raise ValueError("Firebase credentials missing!")
+            raise ValueError("❌ Firebase credentials missing!")
 
-        firebase_cert = "firebase_credentials.json"
-        with open(firebase_cert, "w") as f:
-            f.write(FIREBASE_CREDENTIALS)
+        # ✅ Parse JSON directly instead of writing to a file
+        cred_data = json.loads(FIREBASE_CREDENTIALS)
+        cred = credentials.Certificate(cred_data)
 
-        cred = credentials.Certificate(firebase_cert)
-        firebase_admin.initialize_app(cred, {
-            "storageBucket": os.getenv("FIREBASE_BUCKET")
-        })
+        if not firebase_admin._apps:  # ✅ Prevent multiple initializations
+            firebase_admin.initialize_app(cred, {
+                "storageBucket": os.getenv("FIREBASE_BUCKET")
+            })
 
         bucket = storage.bucket()
         print("✅ Firebase Initialized Successfully!")
