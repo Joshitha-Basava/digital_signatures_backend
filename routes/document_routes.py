@@ -9,6 +9,7 @@ from auth import verify_jwt
 from models.qr_code import QRCodeDB
 from utils.key_management import get_or_create_keys 
 from fastapi.encoders import jsonable_encoder
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -115,3 +116,49 @@ async def get_documents(token: dict = Depends(verify_jwt)):
         doc["_id"] = str(doc["_id"])
 
     return jsonable_encoder(documents)
+
+#document delete api
+@router.delete("/delete/{document_id}")
+async def delete_document(document_id: str, token: dict = Depends(verify_jwt)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    document = await db.documents.find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document["user_id"] != token["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    await db.documents.delete_one({"_id": ObjectId(document_id)})
+    await db.qr_codes.delete_one({"document_id": document_id})
+
+    return {"status": "Document deleted successfully"}
+
+@router.get("/public_key")
+async def get_public_key(token: dict = Depends(verify_jwt)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    print(f"User authenticated: {token['user_id']}")
+
+    public_key = await db.public_keys.find_one({"user_id": token["user_id"]})
+    if not public_key:
+        raise HTTPException(status_code=404, detail="Public key not found")
+
+    # Convert ObjectId fields to string
+    public_key["_id"] = str(public_key["_id"])  # Convert MongoDB ObjectId to string
+    if "key_id" in public_key and isinstance(public_key["key_id"], ObjectId):
+        public_key["key_id"] = str(public_key["key_id"])
+
+    return jsonable_encoder(public_key)
+
+#write api to reset the public key of the user
+@router.post("/reset_public_key")
+async def reset_public_key(token: dict = Depends(verify_jwt)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    private_key, public_key, key_id = await get_or_create_keys(token["user_id"])
+
+    return {"status": "Public key reset successfully", "public_key": public_key, "key_id": key_id}
